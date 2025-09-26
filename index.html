@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generator zdjęć z ramką — POZA SCHEMATEM</title>
+  <meta name="description" content="Wgraj zdjęcie, dopasuj do ramki i pobierz gotowy obraz 4:5. Działa na komputerze i telefonach (Android/iOS)." />
+  <style>
+    :root{
+      --bg:#ffffff;
+      --text:#000000;
+      --muted:#334155;
+      --accent:#00c4cc; /* jasny turkus */
+      --accent-weak:#b8f3f5;
+      --card:#f8fafc;
+      --border:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:1200px;margin:24px auto;padding:16px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:20px}
+    @media (max-width: 960px){.grid{grid-template-columns:1fr}}
+
+    /* Podgląd */
+    .stage{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
+    canvas{max-width:100%;height:auto;display:block;margin:auto;border:1px solid var(--border);border-radius:10px;background:#fff}
+
+    /* Prawy panel */
+    .sidebar{border:1px solid var(--border);border-radius:12px;background:var(--card);padding:16px}
+    .sidebar h1{font-size:20px;margin:0 0 8px 0;color:#0f172a}
+    .lead{font-size:14px;line-height:1.45;color:#055c60;background:var(--accent-weak);border:1px solid #92e9ec;padding:10px;border-radius:10px}
+
+    .group{margin-top:16px;padding:12px;border:1px dashed #aeecef;border-radius:10px;background:#ffffff}
+    .group h3{margin:0 0 10px 0;font-size:14px;color:#066a6e}
+
+    .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#003436;font-weight:700;border-radius:10px;padding:10px 12px;cursor:pointer}
+    .btn.secondary{background:#e6ffff;color:#055c60}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+
+    label{font-size:13px;color:#055c60}
+
+    input[type="file"]{width:100%}
+
+    /* Slider turkusowy */
+    input[type="range"]{width:100%;accent-color:var(--accent)}
+    .range-meta{display:flex;justify-content:space-between;font-size:12px;color:#066a6e;margin-top:4px}
+
+    footer{margin-top:18px;text-align:center;font-size:13px;color:#475569}
+    footer a{color:#0ea5a9;text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grid">
+      <div class="stage">
+        <canvas id="canvas"></canvas>
+      </div>
+
+      <aside class="sidebar">
+        <h1>Generator zdjęć z ramką</h1>
+        <p class="lead">
+          Pokaż innym, że uczestniczysz w konferencji
+          „AUTYZM, ADHD POZA SCHEMATEM – zaburzenia neurorozwojowe w ujęciu interdyscyplinarnym”.
+          Wgraj swoje zdjęcie, dopasuj do ramki, pobierz i wstaw na swoje media społecznościowe z hashtagiem
+          <strong>#pozaschematem</strong>.
+        </p>
+
+        <div class="group">
+          <h3>1) Wgraj zdjęcie</h3>
+          <input id="file" type="file" accept="image/*" />
+        </div>
+
+        <div class="group">
+          <h3>2) Powiększenie</h3>
+          <input id="zoom" type="range" min="-1.0" max="2.0" step="0.001" value="0" />
+          <div class="range-meta"><span>mniejsze</span><span>0 (dopasuj)</span><span>większe</span></div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn secondary" id="rotate">Obróć 90°</button>
+            <button class="btn secondary" id="reset">Wycentruj</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <h3>3) Pozycja zdjęcia</h3>
+          <label for="panX">Przesunięcie poziome (X)</label>
+          <input id="panX" type="range" min="-1000" max="1000" step="1" value="0" />
+          <label for="panY">Przesunięcie pionowe (Y)</label>
+          <input id="panY" type="range" min="-1000" max="1000" step="1" value="0" />
+        </div>
+
+        <div class="group">
+          <h3>4) Pobierz</h3>
+          <div class="row">
+            <button class="btn" id="downloadPng">Pobierz PNG / Udostępnij</button>
+            <button class="btn" id="downloadJpg">Pobierz JPG / Udostępnij</button>
+          </div>
+          <p style="font-size:12px;color:#066a6e;margin-top:8px">Na iPhone/iPad pobieranie może otworzyć obraz w tej samej karcie — użyj przycisku <em>Udostępnij</em> lub przytrzymaj obraz i wybierz <em>Zapisz obraz</em>.</p>
+        </div>
+
+        <footer>
+          © 2025 <a href="https://konferencjarozwinskrzydla.pl" target="_blank" rel="noopener">konferencjarozwinskrzydla.pl</a>
+        </footer>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ===== KONFIGURACJA RAMKI =====
+  // Umieść ramkę (PNG) obok index.html. Najlepiej nazwij ją ramka.png (bez spacji i PL znaków).
+  const FRAME_CANDIDATES = [
+    'ramka.png', 'ramka.PNG', 'Ramka.png', 'Ramka.PNG', 'Ramka nakładka.png'
+  ];
+  const FRAME_VERSION = 'v=14'; // podbij, gdy zmienisz plik (omija cache)
+
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const fileInput = document.getElementById('file');
+  const rotateBtn = document.getElementById('rotate');
+  const resetBtn = document.getElementById('reset');
+  const zoomSlider = document.getElementById('zoom');
+  const panXSlider = document.getElementById('panX');
+  const panYSlider = document.getElementById('panY');
+  const downloadPngBtn = document.getElementById('downloadPng');
+  const downloadJpgBtn = document.getElementById('downloadJpg');
+
+  const state = {
+    frame: new Image(),
+    frameLoaded: false,
+    frameTried: [],
+    // Jeśli ramka nie ma przezroczystości, wykryjemy okno (czarny prostokąt):
+    hole: null, // {x,y,w,h}
+
+    img: new Image(),
+    imgLoaded: false,
+    angle: 0,
+    scale: 1,
+    fitScale: 1,
+    x: 0,
+    y: 0,
+    isPanning: false,
+    lastX: 0,
+    lastY: 0
+  };
+
+  // ===== ŁADOWANIE RAMKI z fallbackami =====
+  let frameIdx = 0;
+  function nextFrameSrc(){
+    const base = FRAME_CANDIDATES[frameIdx];
+    return encodeURI(base + (FRAME_VERSION ? (base.includes('?')?'&':'?') + FRAME_VERSION : ''));
+  }
+  function tryLoadFrame(){
+    if(frameIdx >= FRAME_CANDIDATES.length){
+      // wszystko zawiodło – pokaż komunikat i placeholder 4:5
+      canvas.width = 1080; canvas.height = 1350;
+      canvas.style.width = '100%';
+      canvas.style.aspectRatio = '1080 / 1350';
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle = '#0ea5a9'; ctx.lineWidth = 4; ctx.strokeRect(2,2,canvas.width-4,canvas.height-4);
+      ctx.fillStyle = '#0ea5a9'; ctx.font = '16px system-ui, sans-serif';
+      ctx.fillText('Nie mogę znaleźć pliku ramki.', 16, 32);
+      ctx.fillText('Upewnij się, że obok index.html jest plik: ramka.png', 16, 56);
+      return;
+    }
+    const src = nextFrameSrc();
+    state.frameTried.push(src);
+    state.frame.onload = () => {
+      state.frameLoaded = true;
+      // ustaw rozmiar canvasa dokładnie jak ramka
+      canvas.width = state.frame.width;
+      canvas.height = state.frame.height;
+      canvas.style.width = '100%';
+      canvas.style.aspectRatio = state.frame.width + ' / ' + state.frame.height;
+
+      // spróbuj wykryć okno: przezroczystość albo czarny prostokąt
+      detectHoleFromFrame();
+      draw();
+    };
+    state.frame.onerror = () => { frameIdx++; tryLoadFrame(); };
+    state.frame.src = src;
+  }
+  tryLoadFrame();
+
+  function detectHoleFromFrame(){
+    // pobierz piksele ramki
+    const tmp = document.createElement('canvas');
+    tmp.width = state.frame.width; tmp.height = state.frame.height;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(state.frame, 0, 0);
+    const id = tctx.getImageData(0,0,tmp.width,tmp.height);
+    const data = id.data; const w = id.width; const h = id.height;
+
+    // 1) Czy jest jawna przezroczystość? jeśli tak, zostaw hole = null (użyjemy maski alfa)
+    let hasTransparent = false; let tcount = 0;
+    for(let i=3;i<data.length;i+=4){ if(data[i] < 10){ hasTransparent = true; tcount++; if(tcount>200) break; } }
+    if(hasTransparent){ state.hole = null; return; }
+
+    // 2) Wykryj czarny prostokąt (okno) – szybkie przybliżenie
+    const hole = detectBlackRect(data, w, h, 28);
+    state.hole = hole; // może być null – wtedy i tak użyjemy normalnego trybu rysowania
+  }
+
+  function detectBlackRect(data,w,h,thr){
+    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9,cnt=0;
+    // żeby przyspieszyć, próbkowanie co 2 px
+    for(let y=0;y<h;y+=2){
+      for(let x=0;x<w;x+=2){
+        const i=(y*w+x)*4; const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
+        const lum = 0.2126*r+0.7152*g+0.0722*b;
+        if (lum < thr && a>200){ cnt++; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+      }
+    }
+    if (cnt<500) return null; // za mało ciemnych pikseli
+    // marginesy – prostokąt nie powinien sięgać krawędzi
+    if (minX<10 || minY<10 || maxX>w-10 || maxY>h-10) return null;
+    const W=(maxX-minX), H=(maxY-minY);
+    if (W*H < 0.15*w*h) return null; // za mały
+    return {x:minX, y:minY, w:W, h:H};
+  }
+
+  function rotatedDims(){
+    const swap = (state.angle % 180 !== 0);
+    return swap ? {w: state.img.height, h: state.img.width} : {w: state.img.width, h: state.img.height};
+  }
+  function computeFitScale(){
+    const {w: iw, h: ih} = rotatedDims();
+    const cw = canvas.width, ch = canvas.height;
+    return Math.max(cw/iw, ch/ih);
+  }
+  function setScaleFromSlider(sv){
+    const factor = Math.pow(2, sv); // sv=0 -> 1x (fit)
+    const minF = 0.25, maxF = 8;
+    const f = Math.max(minF, Math.min(maxF, factor));
+    state.scale = state.fitScale * f;
+    clampPan();
+  }
+  function recalcAfterImageOrRotate(){
+    if(!state.imgLoaded) return;
+    state.fitScale = computeFitScale();
+    setScaleFromSlider(parseFloat(zoomSlider.value));
+    centerImage();
+    draw();
+  }
+  function centerImage(){ state.x = 0; state.y = 0; clampPan(); }
+  function clampPan(){
+    if(!state.imgLoaded) { panXSlider.value='0'; panYSlider.value='0'; return; }
+    const {w: iw, h: ih} = rotatedDims();
+    const dw = iw * state.scale, dh = ih * state.scale;
+    const minX = Math.min(0, (canvas.width - dw)/2);
+    const maxX = Math.max(0, (dw - canvas.width)/2);
+    const minY = Math.min(0, (canvas.height - dh)/2);
+    const maxY = Math.max(0, (dh - canvas.height)/2);
+    state.x = Math.max(minX, Math.min(maxX, state.x));
+    state.y = Math.max(minY, Math.min(maxY, state.y));
+    panXSlider.value = String(Math.round(state.x));
+    panYSlider.value = String(Math.round(state.y));
+  }
+
+  // ===== RYSOWANIE =====
+  function draw(){
+    // tło białe
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+
+    if(state.imgLoaded){
+      if(state.hole){
+        // Rysuj zdjęcie TYLKO w prostokątnym oknie (clip), potem połóż ramkę
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(state.hole.x, state.hole.y, state.hole.w, state.hole.h);
+        ctx.clip();
+
+        ctx.save();
+        ctx.translate(canvas.width/2 + state.x, canvas.height/2 + state.y);
+        ctx.rotate(state.angle * Math.PI/180);
+        const iw = state.img.width, ih = state.img.height;
+        ctx.drawImage(state.img, -iw*state.scale/2, -ih*state.scale/2, iw*state.scale, ih*state.scale);
+        ctx.restore();
+        ctx.restore();
+
+        if(state.frameLoaded) ctx.drawImage(state.frame, 0, 0);
+      } else {
+        // Ramka z prawdziwą przezroczystością – użyj destination-out
+        ctx.save();
+        ctx.translate(canvas.width/2 + state.x, canvas.height/2 + state.y);
+        ctx.rotate(state.angle * Math.PI/180);
+        const iw = state.img.width, ih = state.img.height;
+        ctx.drawImage(state.img, -iw*state.scale/2, -ih*state.scale/2, iw*state.scale, ih*state.scale);
+        ctx.restore();
+
+        if(state.frameLoaded){
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.drawImage(state.frame, 0, 0);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(state.frame, 0, 0);
+        }
+      }
+    } else {
+      if(state.frameLoaded) ctx.drawImage(state.frame, 0, 0);
+    }
+  }
+
+  // ===== WGRYWANIE ZDJĘCIA =====
+  function loadImageFromFile(file){
+    if(!file) return;
+    const url = URL.createObjectURL(file);
+    const tmp = new Image();
+    tmp.onload = () => {
+      state.img = tmp; state.imgLoaded = true; state.angle = 0;
+      zoomSlider.value = '0';
+      recalcAfterImageOrRotate();
+      URL.revokeObjectURL(url);
+    };
+    tmp.src = url;
+  }
+
+  fileInput.addEventListener('change', (e) => loadImageFromFile(e.target.files[0]));
+
+  let pointerId = null;
+  canvas.addEventListener('pointerdown', (e)=>{
+    if(!state.imgLoaded) return;
+    pointerId = e.pointerId; canvas.setPointerCapture(pointerId);
+    state.isPanning = true; state.lastX = e.clientX; state.lastY = e.clientY;
+  });
+  canvas.addEventListener('pointermove',(e)=>{
+    if(!state.isPanning || e.pointerId !== pointerId) return;
+    state.x += e.clientX - state.lastX; state.y += e.clientY - state.lastY;
+    state.lastX = e.clientX; state.lastY = e.clientY;
+    clampPan(); draw();
+  });
+  const endPan = (e)=>{ if(e.pointerId!==pointerId) return; state.isPanning=false; canvas.releasePointerCapture(pointerId); pointerId=null; };
+  canvas.addEventListener('pointerup', endPan);
+  canvas.addEventListener('pointercancel', endPan);
+
+  zoomSlider.addEventListener('input', ()=>{ if(!state.imgLoaded) return; setScaleFromSlider(parseFloat(zoomSlider.value)); clampPan(); draw(); });
+  panXSlider.addEventListener('input', ()=>{ if(!state.imgLoaded) return; state.x = parseInt(panXSlider.value,10)||0; clampPan(); draw(); });
+  panYSlider.addEventListener('input', ()=>{ if(!state.imgLoaded) return; state.y = parseInt(panYSlider.value,10)||0; clampPan(); draw(); });
+
+  rotateBtn.addEventListener('click', ()=>{ if(!state.imgLoaded) return; state.angle = (state.angle+90)%360; recalcAfterImageOrRotate(); });
+  resetBtn.addEventListener('click', ()=>{ if(!state.imgLoaded) return; zoomSlider.value='0'; state.x=0; state.y=0; recalcAfterImageOrRotate(); });
+
+  // ===== POBIERANIE / UDOSTĘPNIANIE =====
+  function download(mime='image/png', quality){
+    const out = document.createElement('canvas');
+    out.width = canvas.width; out.height = canvas.height;
+    const octx = out.getContext('2d');
+
+    // białe tło
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0,0,out.width,out.height);
+
+    if(state.imgLoaded){
+      if(state.hole){
+        // rysuj tylko w oknie, potem ramka
+        octx.save();
+        octx.beginPath();
+        octx.rect(state.hole.x, state.hole.y, state.hole.w, state.hole.h);
+        octx.clip();
+        octx.save();
+        octx.translate(out.width/2 + state.x, out.height/2 + state.y);
+        octx.rotate(state.angle * Math.PI/180);
+        const iw = state.img.width, ih = state.img.height;
+        octx.drawImage(state.img, -iw*state.scale/2, -ih*state.scale/2, iw*state.scale, ih*state.scale);
+        octx.restore();
+        octx.restore();
+        if(state.frameLoaded) octx.drawImage(state.frame, 0, 0);
+      } else {
+        octx.save();
+        octx.translate(out.width/2 + state.x, out.height/2 + state.y);
+        octx.rotate(state.angle * Math.PI/180);
+        const iw = state.img.width, ih = state.img.height;
+        octx.drawImage(state.img, -iw*state.scale/2, -ih*state.scale/2, iw*state.scale, ih*state.scale);
+        octx.restore();
+        if(state.frameLoaded){
+          octx.globalCompositeOperation = 'destination-out';
+          octx.drawImage(state.frame, 0, 0);
+          octx.globalCompositeOperation = 'source-over';
+          octx.drawImage(state.frame, 0, 0);
+        }
+      }
+    } else if(state.frameLoaded) {
+      octx.drawImage(state.frame, 0, 0);
+    }
+
+    const filename = (mime==='image/png' ? 'pozaschematem.png' : 'pozaschematem.jpg');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    const useShareOrSave = (blob) => {
+      try {
+        const file = new File([blob], filename, { type: blob.type });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: filename }).catch(()=>{});
+          return;
+        }
+      } catch(e) {}
+
+      const url = URL.createObjectURL(blob);
+      const canDownload = 'download' in HTMLAnchorElement.prototype;
+      if (isIOS) { window.location.href = url; setTimeout(()=>URL.revokeObjectURL(url), 30000); return; }
+      if (canDownload) { const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+      else { window.open(url,'_blank'); setTimeout(()=>URL.revokeObjectURL(url),30000); }
+    };
+
+    if (out.toBlob) {
+      out.toBlob((blob)=>{ if(blob) useShareOrSave(blob); else { const dataUrl = out.toDataURL(mime, quality); if(isIOS){window.location.href=dataUrl;} else {const a=document.createElement('a');a.href=dataUrl;a.download=filename;('download' in HTMLAnchorElement.prototype)?a.click():window.open(dataUrl,'_blank');} } }, mime, quality);
+    } else {
+      const dataUrl = out.toDataURL(mime, quality);
+      if(isIOS){ window.location.href = dataUrl; }
+      else { const a=document.createElement('a'); a.href=dataUrl; a.download=filename; if('download' in HTMLAnchorElement.prototype){ a.click(); } else { window.open(dataUrl,'_blank'); } }
+    }
+  }
+  downloadPngBtn.addEventListener('click', ()=> download('image/png'));
+  downloadJpgBtn.addEventListener('click', ()=> download('image/jpeg', 0.92));
+})();
+</script>
+</body>
+</html>
